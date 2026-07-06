@@ -9,11 +9,17 @@ import streamlit as st
 import tempfile
 import os
 from gtts import gTTS
+from PIL import Image
+
+# --- Patch kompatibilitas: moviepy 1.0.3 masih memanggil Image.ANTIALIAS,
+# yang sudah dihapus di Pillow versi baru. Ganti dengan LANCZOS (setara).
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.LANCZOS
+
 from moviepy.editor import (
     ImageClip, CompositeVideoClip, TextClip, AudioFileClip,
     concatenate_videoclips, vfx
 )
-from PIL import Image
 
 st.set_page_config(page_title="Foto ke Video Affiliate", page_icon="🎬", layout="centered")
 st.title("🎬 Foto Produk → Video Affiliate (15s)")

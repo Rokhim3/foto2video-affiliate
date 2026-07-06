@@ -26,7 +26,7 @@ st.set_page_config(page_title="Foto ke Video Affiliate", page_icon="🎬", layou
 st.title("🎬 Foto Produk → Video Affiliate (15s)")
 st.caption("Upload foto produk, isi caption, langsung jadi video vertikal siap posting.")
 
-VIDEO_W, VIDEO_H = 1080, 1920  # format 9:16
+VIDEO_W, VIDEO_H = 720, 1280  # format 9:16, resolusi diperkecil biar ringan di server gratis
 
 # ---------- INPUT ----------
 uploaded_files = st.file_uploader(
@@ -37,7 +37,7 @@ uploaded_files = st.file_uploader(
 product_name = st.text_input("Nama produk", placeholder="Contoh: Lampu Bulan Mini")
 
 benefit_points = st.text_area(
-    "Poin-poin script (satu baris = satu klip/caption)",
+    "Poin-poin script (satu baris = satu klip/caption, MAKSIMAL 6 baris)",
     placeholder=(
         "Bikin kamar kamu estetik banget!\n"
         "Bisa nyala 16 warna beda\n"
@@ -134,6 +134,8 @@ def make_voiceover(text, out_path, lang="id"):
     tts.save(out_path)
 
 
+MAX_CLIPS = 6
+
 # ---------- MAIN PIPELINE ----------
 if generate:
     if not uploaded_files:
@@ -144,7 +146,10 @@ if generate:
     if not lines:
         lines = [product_name or "Produk keren ini wajib kamu punya!"]
 
-    n_clips = max(len(uploaded_files), len(lines))
+    n_clips = min(max(len(uploaded_files), len(lines)), MAX_CLIPS)
+    if max(len(uploaded_files), len(lines)) > MAX_CLIPS:
+        st.warning(f"Dibatasi maksimal {MAX_CLIPS} klip biar server gratis tidak kehabisan memori. Kelebihan baris/foto akan diabaikan.")
+
     # ulang foto/baris kalau jumlahnya beda supaya sinkron
     photos = [uploaded_files[i % len(uploaded_files)] for i in range(n_clips)]
     captions = [lines[i % len(lines)] for i in range(n_clips)]
@@ -191,7 +196,10 @@ if generate:
 
         status.update(label="Rendering video final (bisa beberapa menit)...")
         out_path = os.path.join(tmpdir, "output.mp4")
-        video.write_videofile(out_path, fps=30, codec="libx264", audio_codec="aac")
+        video.write_videofile(
+            out_path, fps=24, codec="libx264", audio_codec="aac",
+            preset="ultrafast", threads=2, logger=None,
+        )
 
         status.update(label="Selesai!", state="complete")
 

@@ -8,8 +8,9 @@ dalam format vertikal 9:16 siap upload ke Reels/TikTok/Shorts.
 import streamlit as st
 import tempfile
 import os
+import numpy as np
 from gtts import gTTS
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 # --- Patch kompatibilitas: moviepy 1.0.3 masih memanggil Image.ANTIALIAS,
 # yang sudah dihapus di Pillow versi baru. Ganti dengan LANCZOS (setara).
@@ -17,7 +18,7 @@ if not hasattr(Image, "ANTIALIAS"):
     Image.ANTIALIAS = Image.LANCZOS
 
 from moviepy.editor import (
-    ImageClip, CompositeVideoClip, TextClip, AudioFileClip,
+    ImageClip, CompositeVideoClip, AudioFileClip,
     concatenate_videoclips, vfx
 )
 
@@ -74,14 +75,58 @@ def ken_burns_clip(img_path, duration, zoom_in=True):
     return clip
 
 
-def make_caption(text, duration):
-    txt = TextClip(
-        text, fontsize=64, color="white", font="DejaVu-Sans-Bold",
-        stroke_color="black", stroke_width=3,
-        size=(VIDEO_W * 0.85, None), method="caption", align="center",
-    )
-    txt = txt.set_duration(duration).set_position(("center", "bottom")).margin(bottom=180, opacity=0)
-    return txt
+FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+]
+
+
+def _load_font(size):
+    for path in FONT_CANDIDATES:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
+def make_caption(text, duration, video_w=VIDEO_W, font_size=64):
+    """Render caption jadi gambar PNG transparan pakai PIL (tidak butuh ImageMagick),
+    lalu dibungkus jadi ImageClip dengan alpha channel sebagai mask otomatis."""
+    font = _load_font(font_size)
+    max_width = int(video_w * 0.85)
+
+    dummy = Image.new("RGBA", (10, 10))
+    draw = ImageDraw.Draw(dummy)
+
+    # word-wrap manual berdasarkan lebar teks
+    words = text.split()
+    lines, current = [], ""
+    for word in words:
+        test = (current + " " + word).strip()
+        bbox = draw.textbbox((0, 0), test, font=font, stroke_width=3)
+        if bbox[2] - bbox[0] <= max_width or not current:
+            current = test
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+
+    line_height = font_size + 24
+    img_h = line_height * len(lines) + 40
+    img = Image.new("RGBA", (video_w, img_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    y = 20
+    for line in lines:
+        bbox = draw.textbbox((0, 0), line, font=font, stroke_width=3)
+        w = bbox[2] - bbox[0]
+        x = (video_w - w) / 2
+        draw.text((x, y), line, font=font, fill="white", stroke_width=3, stroke_fill="black")
+        y += line_height
+
+    arr = np.array(img)  # RGBA -> moviepy otomatis pakai channel alpha sebagai mask
+    clip = ImageClip(arr).set_duration(duration).set_position(("center", "bottom")).margin(bottom=180, opacity=0)
+    return clip
 
 
 def make_voiceover(text, out_path, lang="id"):
